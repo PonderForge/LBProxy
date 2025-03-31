@@ -1,3 +1,4 @@
+#![windows_subsystem = "windows"]
 use std::{cfg, env, io::Read, path::{Path, PathBuf}, process::Command, str::FromStr, time::Instant};
 use bytes::BytesMut;
 use clap::Args;
@@ -6,20 +7,13 @@ use http_mitm_proxy::{DefaultClient, MitmProxy};
 use hyper::{header::{HeaderValue, CONTENT_ENCODING, CONTENT_LENGTH, CONTENT_TYPE}, StatusCode};
 use hyper::Response;
 use hyper::body::Bytes;
-use mbr::Mbr;
-use ort::{inputs, CPUExecutionProvider, CUDAExecutionProvider, GraphOptimizationLevel, Session, SessionOutputs, TensorRTExecutionProvider};
 use tracing_subscriber::EnvFilter;
-use ndarray::{s, Array, Axis, IxDyn};
 use dirs_next;
 use opencv::imgcodecs::{imwrite, IMREAD_COLOR};
 use opencv::core::*;
-use opencv::imgproc::*;
-use opencv::dnn::*;
 use yaml_rust2::{yaml::{self, Hash}, YamlLoader};
 use flate2::read::GzDecoder;
 
-mod data;
-mod mbr;
 
 
 //Structs for Sanity
@@ -100,22 +94,6 @@ async fn main() {
         default_reaction: encode_reaction(config_deser["default_reaction"].as_str().unwrap()),
         site_reaction_settings: config_deser["site_reaction_settings"].as_hash().unwrap().clone()
     };
-    let exec_providers = [
-        if config.optimizations.cuda {
-            CUDAExecutionProvider::default().build()
-        } else if config.optimizations.tensorrt {
-            TensorRTExecutionProvider::default().build()
-        } else {
-            CPUExecutionProvider::default().build()
-        }
-    ];
-    //Initialize Onnx Runtime
-    let ort_init = ort::init()
-		.with_execution_providers(exec_providers)
-		.commit();
-    if ort_init.is_err() {
-        panic!("ONNX was not correctly initalized! :(");
-    }
     let public_key = std::fs::read_to_string(Path::new(format!("{}pub.crt", configdir).as_str()));
     let private_key = std::fs::read_to_string(Path::new(format!("{}priv.crt", configdir).as_str()));
     //Check if the HTTPS keys exist
@@ -138,10 +116,7 @@ async fn main() {
         // This is the root cert that will be used to sign the fake certificates
         Some(root_cert),
         // This is the main Session for the NSFW detector
-        Session::builder().unwrap().with_optimization_level(GraphOptimizationLevel::Level3).unwrap()
-        .with_intra_threads(config.optimizations.threads/2).unwrap().commit_from_file(format!("{}nsfw-classify.onnx", execdir).as_str()).unwrap(),
-        Session::builder().unwrap().with_optimization_level(GraphOptimizationLevel::Level3).unwrap()
-        .with_intra_threads(config.optimizations.threads/4).unwrap().commit_from_file(format!("{}human-det.onnx", execdir).as_str()).unwrap(),
+        openlb::init_with_defaults(),
         config.site_reaction_settings,
         execdir
     );
@@ -153,7 +128,7 @@ async fn main() {
             .unwrap(),
     );
     let server = proxy
-        .bind((config.ip.clone(), config.port), move |_client_addr, req, classifier, detector, site_reactions, execdir| {
+        .bind((config.ip.clone(), config.port), move |_client_addr, req, cleaner, site_reactions, execdir| {
             let client = client.clone();
             async move {
                 let uri = req.uri().clone();
@@ -212,92 +187,22 @@ async fn main() {
                     let input_img_w: i32 = input_img.cols();
                     let input_img_h: i32 = input_img.rows();
                     if input_img_h > 60 || input_img_w > 60 {
-                        let mut humans: Vec<(f32, f32, f32, f32, usize, f32, f32)> = Vec::new();
-                        if reaction == 1 || reaction == 2 {
-                            //Resize Input Image for Human Detection
-                            let resize_w_scale: f32 = input_img_w as f32/640f32;
-                            let resize_h_scale: f32 = input_img_h as f32/640f32;
-                            //Convert Image to a Tensor
-                            let input_tensor = ort::Tensor::from_array(([1usize,3,640,640], yolo_preprocess(&input_img).data_typed::<f32>().unwrap())).unwrap();
-                            //Run the Human Detector (YOLOv11) on the Image Tensor
-                            let output_tensor: SessionOutputs = detector.run(inputs!["images" => input_tensor].unwrap()).unwrap();
-                            let outputs = output_tensor["output0"].try_extract_tensor::<f32>().unwrap().into_owned();
-                            humans = yolo_postprocess(vec![outputs], &input_img, config.threasholds.humans as f32);
-                            //Run post processing on Human Detector into Vector
-                            let mut replace_image = false;
-                            let mut exit_img = input_img.clone();
-                            for human in &humans {
-                                //Get verticies of Rotated Boxes 
-                                let rotangle = RotatedRect::new(Point2f::new(human.0 + (human.2/2.0), human.1 + (human.3/2.0)), Size2f::new(human.2, human.3), (human.6*180.0)/3.14159265359).unwrap();
-                                let mut vertices: [Point_<f32>; 4]= [Default::default(); 4];
-                                rotangle.points(&mut vertices);
-                                //Get cropped image from Rotated Boxes
-                                let rotmat = get_rotation_matrix_2d(rotangle.center, ((human.6*180.0)/3.14159265359) as f64, 1f64).unwrap();
-                                let mut rotated: Mat = Mat::default();
-                                warp_affine(&input_img, &mut rotated, &rotmat, input_img.size().unwrap(), INTER_LINEAR, BORDER_TRANSPARENT, VecN::new(0.0, 0.0, 0.0, 0.0));
-                                let mut cropped: Mat = Mat::default();
-                                get_rect_sub_pix(&rotated, Size::new(human.2 as i32, human.3 as i32), Point2f::new(human.0 + (human.2/2.0), human.1 + (human.3/2.0)), &mut cropped, -1);
-                                //Run NSFW Classification on All Humans Detected
-                                let metrix = classify_image(&classifier, &cropped);
-                                println_buffer(&mut end_stats, &format!("  Human Metrics: {:?}", metrix));
-                                if metrix[1] > config.threasholds.hentai as f32 || metrix[3] > config.threasholds.porn as f32 || metrix[4] > config.threasholds.sexy as f32 {
-                                    //Cover Human if NSFW
-                                    // let mut vecvert: Vector<Point> = Vector::new();
-                                    // for i in 0..4 {
-                                    //     vecvert.insert(i, Point::new(vertices[i].x as i32, vertices[i].y as i32));
-                                    // }
-                                    // let _ = fill_convex_poly(&mut exit_img, &vecvert, Scalar::new(metrix[1] as f64 *255.0, metrix[3] as f64 *255.0,metrix[4] as f64 *255.0,255.0), LINE_8, 0);
-                                    for i in 0..4
-                                    {
-                                        line(&mut exit_img, Point::new(vertices[i].x as i32, vertices[i].y as i32), Point::new(vertices[(i+1)%4].x as i32, vertices[(i+1)%4].y as i32), Scalar::new(metrix[4] as f64 *255.0, metrix[3] as f64 *255.0,metrix[1] as f64 *255.0,255.0), 6, LINE_8, 0);
-                                    }
-                                    replace_image = true;
-                                } else {
-                                    for i in 0..4
-                                    {
-                                        line(&mut exit_img, Point::new(vertices[i].x as i32, vertices[i].y as i32), Point::new(vertices[(i+1)%4].x as i32, vertices[(i+1)%4].y as i32), Scalar::new(0.0,0.0,0.0,255.0), 6, LINE_8, 0);
-                                    }
-                                }
-                                replace_image = true;
-                            }
-                            if replace_image  {
-                                //Replace Orginal Image with Scrubbed Image
-                                println_buffer(&mut end_stats, "  Image is NSFW: Edited");
-                                let mut bytes = Vector::new();
-                                let _ = opencv::imgcodecs::imencode(if content_type == "image/png" {".png"} else if content_type == "image/webp" {".webp"} else {".jpg"}, &exit_img, &mut bytes, &opencv::core::Vector::new());
-                                body = BytesMut::from(bytes.as_slice());
-                                parts.headers.insert(CONTENT_LENGTH, body.len().into());
-                                //parts.headers.insert("LustBlock-Tagged", 1.into());
-                            } else {
-                                if !humans.is_empty() {
-                                    println_buffer(&mut end_stats, "  Image is OK: Allowed");
-                                }
-                                //parts.headers.insert("LustBlock-Tagged", 0.into());
-                            }
-                        }
-                        println!("Ran Det, Class: {:?}, Reaction: {:?}",  humans.is_empty(), reaction);
-                        //If the Human Detector does not find any humans, then Classifier runs on Whole Image
-                        if reaction == 0 || (humans.is_empty() && reaction == 2) {
-                            let metrix = classify_image(&classifier, &input_img);
-                            println_buffer(&mut end_stats, &format!("  Overall Metrics: {:?}", metrix));
-                            if metrix[1] > config.threasholds.hentai as f32 || metrix[3] > config.threasholds.porn as f32 || metrix[4] > config.threasholds.sexy as f32 {
-                                //Replace Whole Image with Distraction
-                                let mut bytes = Vector::new();
-                                let replacement = opencv::imgcodecs::imread(&format!("{}distraction.jpg", execdir), IMREAD_COLOR).unwrap();
-                                let _ = opencv::imgcodecs::imencode(if content_type == "image/png" {".png"} else if content_type == "image/webp" {".webp"} else {".jpg"}, &replacement, &mut bytes, &opencv::core::Vector::new());
-                                body = BytesMut::from(bytes.as_slice());
-                                println_buffer(&mut end_stats, "  Image is NSFW: Blocked");
-                                parts.headers.insert("LustBlock-Tagged", 1.into());
-                            } else {
-                                println_buffer(&mut end_stats, "  Image is OK: Allowed");
-                                parts.headers.insert("LustBlock-Tagged", 0.into());
-                            }
+                        if reaction == 2 {
+                            input_img = cleaner.clean(&input_img, openlb::CleanLevel::OriginalLB);
+                        } else if reaction == 1 {
+                            input_img = cleaner.clean(&input_img, openlb::CleanLevel::Human);
+                        } else if reaction == 0 {
+                            input_img = cleaner.clean(&input_img, openlb::CleanLevel::Overall);
                         }
                         println_buffer(&mut end_stats, &format!("  Time: {:?}", now.elapsed()));
                     } else {
                         println_buffer(&mut end_stats, "  Image is Too Small: Allowed");
                         parts.headers.insert("LustBlock-Tagged", 0.into());
                     }
+                    let mut bytes = Vector::new();
+                    let _ = opencv::imgcodecs::imencode(if content_type == "image/png" {".png"} else if content_type == "image/webp" {".webp"} else {".jpg"}, &input_img, &mut bytes, &opencv::core::Vector::new());
+                    body = BytesMut::from(bytes.as_slice());
+                    parts.headers.insert(CONTENT_LENGTH, body.len().into());
                     //Finish the recognition by printing the buffered stats
                     print!("{}", &end_stats);
                 }
@@ -358,85 +263,6 @@ extern "C" {
     fn register_close_handler();
 }
 
-//Postprocess YOLO boxes
-pub fn yolo_postprocess( xs: Vec<Array<f32, IxDyn>>, xs0: &Mat, conf: f32 ) -> Vec<(f32, f32, f32, f32, usize, f32, f32)> {
-    const CXYWH_OFFSET: usize = 4; // cxcywh
-    let preds = &xs[0];
-    let anchor = preds.axis_iter(Axis(0)).enumerate().next().unwrap().1;
-    // [bs, 4 + nc + nm, anchors]
-    // input image
-    let width_original = xs0.cols() as f32;
-    let height_original = xs0.rows() as f32;
-    let ratio = (640 as f32 / width_original)
-        .min(640 as f32 / height_original);
-
-    // save each result
-    let mut data: Vec<(f32, f32, f32, f32, usize, f32, f32)> = Vec::new();
-    for pred in anchor.axis_iter(Axis(1)) {
-        // split preds for different tasks
-        let bbox = pred.slice(s![0..CXYWH_OFFSET]);
-        let clss = pred.slice(s![CXYWH_OFFSET..CXYWH_OFFSET + 1 as usize]);
-        let rad = pred.slice(s![CXYWH_OFFSET + 1..CXYWH_OFFSET + 2 as usize]);
-        
-        // confidence and id
-        let (id, &confidence) = clss
-            .into_iter()
-            .enumerate()
-            .reduce(|max, x| if x.1 > max.1 { x } else { max })
-            .unwrap(); // definitely will not panic!
-
-        // confidence filter
-        if confidence < conf {
-            continue;
-        }
-        let square_max = width_original.max(height_original);
-        // bbox re-scale
-        let cx = bbox[0] / ratio;
-        let cy = bbox[1] / ratio;
-        let w = bbox[2] / ratio;
-        let h = bbox[3] / ratio;
-        let x = (cx - w / 2.) - ((square_max-width_original)/2.0);
-        let y = (cy - h / 2.) - ((square_max-height_original)/2.0);
-        let y_bbox = (
-            x.max(0.0f32).min(width_original),
-            y.max(0.0f32).min(height_original),
-            w,
-            h,
-            id,
-            confidence,
-            rad[0]
-        );
-
-        // data merged
-        data.push(y_bbox);
-    }
-
-    // nms
-    nms(&mut data, 0.40);
-    data
-}
-
-//Preprocess YOLO image for inference
-pub fn yolo_preprocess(input: &Mat) -> Mat {
-    let mut output: Mat = Mat::default();
-
-    let h1 = 640f32 * (input.rows() as f32/input.cols() as f32);
-    let w1 = 640f32 * (input.cols() as f32/input.rows() as f32);
-    if h1 <= 640f32 {
-        resize( input, &mut output, opencv::core::Size_::new(640, h1 as i32), 0.0, 0.0, INTER_LINEAR);
-    } else {
-        resize( input, &mut output, opencv::core::Size_::new(w1 as i32, 640), 0.0, 0.0, INTER_LINEAR);
-    }
-
-    let top = (640-output.rows()) / 2;
-    let down = (640-output.rows()+1) / 2;
-    let left = (640- output.cols()) / 2;
-    let right = (640 - output.cols()+1) / 2;
-    let mut out: Mat = Mat::default();
-    copy_make_border(&mut output, &mut out, top, down, left, right, BORDER_CONSTANT, opencv::core::Scalar::new(144.0, 144.0, 144.0, 0.0) );
-    blob_from_image(&out, 1f64/255f64, Size::new(640, 640), Scalar::new(0.0,0.0,0.0,0.0), true, false, CV_32F).unwrap()
-}
-
 //Create Certificate for MITM
 fn make_root_cert(configdir: &String, config: &Config) -> rcgen::CertifiedKey {
     let mut param = rcgen::CertificateParams::default();
@@ -490,46 +316,4 @@ fn encode_reaction (input: &str) -> u8 {
 fn println_buffer (buffer: &mut String, print: &str) {
     buffer.push_str(print);
     buffer.push_str("\n");
-}
-
-//Runs NSFW Classification on a image or part of image
-fn classify_image (model: &Session, image: &Mat) -> Vec<f32> {
-    //Reformat Image to Classifer Model Input
-    let resized_img: Mat = blob_from_image(&image, 1f64/255f64, Size::new(224, 224), Scalar::new(0.0,0.0,0.0,0.0), true, false, CV_32F).unwrap();
-    let input_tensor = ort::Tensor::from_array(([1usize,3,224,224], resized_img.data_typed::<f32>().unwrap())).unwrap();
-    //Perform Inference
-    let output_tensor: SessionOutputs = model.run(inputs!["pixel_values" => input_tensor].unwrap()).unwrap();
-    let outputs = output_tensor["logits"].try_extract_tensor::<f32>().unwrap();
-    let mut metrix: Vec<f32> = Vec::new();
-    for output in outputs.rows() {
-        metrix = output.to_vec();
-    }
-    if metrix[4] > 0.1 { 
-        imwrite(&format!("test_{}.jpg", rand::random::<char>()), &image, &opencv::core::Vector::new());
-    }
-    return metrix;
-}
-
-//Rotated NMS function
-pub fn nms(xs: &mut Vec<(f32, f32, f32, f32, usize, f32, f32)>, iou_threshold: f32 ) {
-    xs.sort_by(|b1, b2| b2.5.partial_cmp(&b1.5).unwrap());
-
-    let mut current_index = 0;
-    for index in 0..xs.len() {
-        let mut drop = false;
-        for prev_index in 0..current_index {
-            let mbr = Mbr::from_cxcywhr((xs[index].0 + (xs[index].2/2.0)) as f64, (xs[index].1 + (xs[index].3/2.0)) as f64, xs[index].2 as f64, xs[index].3 as f64, xs[index].6 as f64);
-            let mbr2 = Mbr::from_cxcywhr((xs[prev_index].0 + (xs[prev_index].2/2.0)) as f64, (xs[prev_index].1 + (xs[prev_index].3/2.0)) as f64, xs[prev_index].2 as f64, xs[prev_index].3 as f64, xs[prev_index].6 as f64);
-            let iou = mbr.iou(&mbr2);
-            if iou > iou_threshold {
-                drop = true;
-                break;
-            }
-        }
-        if !drop {
-            xs.swap(current_index, index);
-            current_index += 1;
-        }
-    }
-    xs.truncate(current_index);
 }
