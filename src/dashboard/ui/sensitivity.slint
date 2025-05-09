@@ -1,0 +1,129 @@
+import { Button, GroupBox, VerticalBox, HorizontalBox, Slider, ScrollView, StandardButton  } from "std-widgets.slint";
+
+export struct ModelThresholds  {
+    sexy: float,
+    porn: float,
+    hentai: float,
+}
+
+export global Sensitivity {
+    in-out property <ModelThresholds> human: {sexy: 0.0, hentai: 0.0, porn: 0.0};
+    in-out property <ModelThresholds> overall: {sexy: 0.0, hentai: 0.0, porn: 0.0};
+    in-out property <ModelThresholds> segment: {sexy: 0.0, hentai: 0.0, porn: 0.0};
+    callback apply();
+}
+component Threshold inherits HorizontalLayout {
+    in-out property <float> variable;
+    callback onchange(float);
+    Slider {
+        minimum: 0.0;
+        maximum: 1.0;
+        value: 1.0-root.variable;
+        changed(value) => {onchange(1.0-value);}
+    }
+    Text {text: Math.floor((1.0-root.variable)*100) + "%"; width: 40px; horizontal-alignment: center;}
+} 
+export component SensitivityPage inherits VerticalBox  {
+    accessible-role: tab-panel;
+    Text {
+        font-size: 20px;
+        height: 50px;
+        text: @tr("Model Sensitivity");
+    }
+    ScrollView {
+        max-height: parent.height - 1px;
+        
+        VerticalBox {
+            Text {
+                height: 50px;
+                horizontal-alignment: TextHorizontalAlignment.left;
+                text: "Overall";
+                vertical-alignment: TextVerticalAlignment.center;
+                font-size: 15px;
+            }
+            Text {
+                text: "Porn";
+            }
+            Threshold {
+                variable: Sensitivity.overall.porn;
+                onchange(a) => {Sensitivity.overall.porn = a}
+            }
+            Text {
+                text: "Sexually Intended";
+            }
+            Threshold {
+                variable: Sensitivity.overall.sexy;
+                onchange(a) => {Sensitivity.overall.sexy = a}
+            }
+            Text {
+                text: "Hentai";
+            }
+            Threshold {
+                variable: Sensitivity.overall.hentai;
+                onchange(a) => {Sensitivity.overall.hentai = a}
+            }
+            Text {
+                height: 50px;
+                horizontal-alignment: TextHorizontalAlignment.left;
+                text: "Human";
+                vertical-alignment: TextVerticalAlignment.center;
+                font-size: 15px;
+            }
+            Text {
+                text: "Porn";
+            }
+            Threshold {
+                variable: Sensitivity.human.porn;
+                onchange(a) => {Sensitivity.human.porn = a}
+            }
+            Text {
+                text: "Sexually Intended";
+            }
+            Threshold {
+                variable: Sensitivity.human.sexy;
+                onchange(a) => {Sensitivity.human.sexy = a}
+            }
+            Text {
+                text: "Hentai";
+            }
+            Threshold {
+                variable: Sensitivity.human.hentai;
+                onchange(a) => {Sensitivity.human.hentai = a}
+            }
+            Text {
+                height: 50px;
+                horizontal-alignment: TextHorizontalAlignment.left;
+                text: "Segmented";
+                vertical-alignment: TextVerticalAlignment.center;
+                font-size: 15px;
+            }
+            Text {
+                text: "Porn";
+            }
+            Threshold {
+                variable: Sensitivity.segment.porn;
+                onchange(a) => {Sensitivity.segment.porn = a}
+            }
+            Text {
+                text: "Sexually Intended";
+            }
+            Threshold {
+                variable: Sensitivity.segment.sexy;
+                onchange(a) => {Sensitivity.segment.sexy = a}
+            }
+            Text {
+                text: "Hentai";
+            }
+            Threshold {
+                variable: Sensitivity.segment.hentai;
+                onchange(a) => {Sensitivity.segment.hentai = a}
+            }
+        }
+    }
+    StandardButton {
+        kind: apply;
+        clicked => {
+            Sensitivity.apply();
+        }
+    }
+}

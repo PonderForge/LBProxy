@@ -1,0 +1,94 @@
+import { Button, GroupBox, VerticalBox, HorizontalBox, Slider, ScrollView, StandardButton, CheckBox } from "std-widgets.slint";
+
+component NumberInput inherits TextInput {
+    in property <int> input;
+    text: input;
+    input-type: number;
+    height: 20px;
+    horizontal-alignment: TextHorizontalAlignment.center;
+}
+
+export global AdvancedSettings {
+    callback apply(string, string, bool, bool);
+    in property <bool> windows: true;
+    in property <bool> startonboot: false;
+    in property <bool> autoconnect: false;
+    in property <int> ip1: 127;
+    in property <int> ip2: 0;
+    in property <int> ip3: 0;
+    in property <int> ip4: 1;
+    in property <int> port: 3003;
+}
+
+export component AdvancedPage inherits VerticalBox {
+    Text {
+        font-size: 20px;
+        height: 50px;
+        text: @tr("Advanced Settings");
+    }
+    Text {
+        height: 50px;
+        horizontal-alignment: TextHorizontalAlignment.left;
+        text: "IPv4 Address & Port";
+        vertical-alignment: TextVerticalAlignment.center;
+        font-size: 15px;
+    }
+    HorizontalLayout {
+        
+        IPv41 := NumberInput {
+            input: AdvancedSettings.ip1;
+        }
+        Text {
+            text: ".";
+            width: 10px;
+        }
+        IPv42 := NumberInput {
+            input: AdvancedSettings.ip2;
+        }
+        Text {
+            text: ".";
+            width: 10px;
+        }
+        IPv43 := NumberInput {
+            input: AdvancedSettings.ip3;
+        }
+        Text {
+            text: ".";
+            width: 10px;
+        }
+        IPv44 := NumberInput {
+            input: AdvancedSettings.ip4;
+        }
+        Text {
+            text: ":";
+            width: 10px;
+        }
+        IPv4Port := NumberInput {
+            input: AdvancedSettings.port;
+        }
+    }
+    AutoconnectCheckbox := CheckBox {
+        text: "Autoconnect Computer to Proxy (Windows Only)";
+        enabled: AdvancedSettings.windows;
+        checked: AdvancedSettings.autoconnect;
+    }
+    StartOnBootupCheckbox := CheckBox {
+        text: "Start on Bootup";
+        checked: AdvancedSettings.startonboot;
+    }
+    Rectangle {}
+    StandardButton {
+        kind: apply;
+        clicked => {
+            AdvancedSettings.apply(
+                IPv41.text + "." +
+                IPv42.text + "." +
+                IPv43.text + "." +
+                IPv44.text,
+                IPv4Port.text,
+                AutoconnectCheckbox.checked,
+                StartOnBootupCheckbox.checked
+            );
+        }
+    }
+}

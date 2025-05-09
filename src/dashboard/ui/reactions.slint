@@ -1,0 +1,106 @@
+import { Button, GroupBox, VerticalBox, StandardTableView, ComboBox, ScrollView, StandardButton, ListView, HorizontalBox } from "std-widgets.slint";
+export struct WebReaction {
+    website: string,
+    aireaction: string,
+}
+component WebsiteReaction inherits HorizontalBox {
+    in property <string> aireaction;
+    in property <string> website;
+    in property <int> id;
+    Rectangle {
+        Text {
+            text: website;
+            horizontal-alignment: TextHorizontalAlignment.center;
+            vertical-alignment: TextVerticalAlignment.center;
+            font-size: 15px;
+        }
+    }
+    Rectangle {
+        Text {
+            text: aireaction;
+            horizontal-alignment: TextHorizontalAlignment.center;
+            vertical-alignment: TextVerticalAlignment.center;
+            font-size: 15px;
+        }
+    }
+    Button {
+        width: 60px;
+        text: "Delete";
+        clicked => {
+            Reactions.delete_reaction(id);
+        }
+    }
+    height: 45px;
+}
+export global Reactions {
+    callback apply_default();
+    in-out property <string> default;
+    in property <[WebReaction]> list-items: [];
+    callback delete_reaction(int);
+    callback add_reaction(string, string);
+}
+export component ReactionsPage inherits VerticalBox  {
+    accessible-role: tab-panel;
+    Text {
+        font-size: 20px;
+        height: 50px;
+        text: @tr("Reactions");
+    }
+    Text {
+        height: 50px;
+        horizontal-alignment: TextHorizontalAlignment.left;
+        text: "Default Reaction";
+        vertical-alignment: TextVerticalAlignment.center;
+        font-size: 15px;
+    }
+    HorizontalLayout{
+        default_selector := ComboBox {
+            width: 200px;
+            model: ["Human-Scan", "Image-Scan", "Combination-Scan", "Allowed", "Denied"];
+            current-value: Reactions.default;
+        }
+        StandardButton {
+            kind: apply;
+            clicked => {
+                Reactions.default = default_selector.current-value;
+                Reactions.apply_default();
+            }
+        }
+    }
+    Text {
+        height: 50px;
+        horizontal-alignment: TextHorizontalAlignment.left;
+        text: "Per-Domain Reactions";
+        vertical-alignment: TextVerticalAlignment.center;
+        font-size: 15px;
+    }
+    VerticalLayout {
+        for list-item[i] in Reactions.list-items: WebsiteReaction {
+            website: list-item.website;
+            aireaction: list-item.aireaction;
+            id: i;
+        }
+        Rectangle {}
+    }
+    HorizontalBox {
+        Rectangle {
+            border-color: white;
+            border-radius: 3px;
+            border-width: 1px;
+            width: 200px;
+            text_input := TextInput {
+                vertical-alignment: TextVerticalAlignment.center;
+                horizontal-alignment: TextHorizontalAlignment.center;
+            }
+        }
+        reaction := ComboBox {
+            model: ["Human-Scan", "Image-Scan", "Combination-Scan", "Allowed", "Denied"];
+        }
+        Button {
+            text: "Add";
+            clicked => {
+                Reactions.add_reaction(text_input.text, reaction.current-value);
+            }
+        }
+    }
+}

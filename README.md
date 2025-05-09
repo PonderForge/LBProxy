@@ -82,7 +82,6 @@ Lust by definition is "very strong sexual desire" for another person as almost e
 - [pykeio/ort](https://github.com/pykeio/ort): Literally, most helpful project for highspeed AI inferencing.
 - [AdamCodd/vit-base-nsfw-detector](https://huggingface.co/AdamCodd/vit-base-nsfw-detector): The NSFW Classifier AI behind it all, couldn't have done it without you!
 - [ultralytics/ultralytics](https://github.com/ultralytics/ultralytics): Used the YOLOV11 architecture for human boxing for per-human porn detection and removal.
-- My mom: Taught me how to fight lust, how to see the better way, and how to be a better man. Oh and put up with a verbally abusive man for 26 years to keep the family together. Love you!
 - Jesus Christ: My savior, my redeemer, my rock, my king, my commander, and literally the sole reason I exist. Wrote the book that warned us about lust and still loves us when we ignore it. All Hail King Jesus!\
 \
 This was created by PonderForge, if you use this code, give credit where credit is due.\

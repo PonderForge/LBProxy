@@ -1,0 +1,100 @@
+import { Button, GroupBox, SpinBox, ComboBox, CheckBox, LineEdit, VerticalBox, HorizontalBox,
+    Slider, SpinBox, Switch, Spinner, GridBox, ScrollView, StandardButton, StandardTableView  } from "std-widgets.slint";
+import { SensitivityPage } from "sensitivity.slint";
+import { SideBar } from "side_bar.slint";
+import { AdvancedPage } from "advanced.slint";
+import { ReactionsPage } from "reactions.slint";
+import { AboutPage } from "about.slint";
+
+export {Sensitivity} from "sensitivity.slint";
+export {Reactions} from "reactions.slint";
+export {AdvancedSettings} from "advanced.slint";
+
+export global Status {
+    in-out property <bool> service_running: false;
+    callback start-service();
+    callback stop-service();
+    callback poll-service();
+    callback get_logs();
+    in property <[string]> logs: ["Logs will be displayed here...", "];"];
+}
+
+component LogPage inherits VerticalBox  {
+    Timer {
+        interval: 3s;
+        running: true;
+        triggered => {
+            Status.get_logs();
+        }
+    }
+    Text {
+        font-size: 20px;
+        height: 50px;
+        text: @tr("LustBlock Logs");
+    }
+    for list-logs[i] in Status.logs: Text {
+        text: list-logs;
+        height: 14px;
+        padding: 0px;
+    }
+}
+
+component StatusPage inherits VerticalBox  {
+    accessible-role: tab-panel;
+    Timer {
+        interval: 3s;
+        running: true;
+        triggered => {
+            Status.poll-service();
+        }
+    }
+    Text {
+        font-size: 20px;
+        height: 50px;
+        text: @tr("Status");
+    }
+    Rectangle {}
+    Text {
+        height: 50px;
+        horizontal-alignment: TextHorizontalAlignment.center;
+        text: Status.service_running ? @tr("Lustblock Service is running...") : @tr("Lustblock Service is not running...");
+        vertical-alignment: TextVerticalAlignment.center;
+        width: 400px;
+        x: 0px;
+        font-size: 15px;
+    }
+    Button {
+        accessible-role: AccessibleRole.button;
+        height: 50px;
+        text: Status.service_running ? @tr("Stop") : @tr("Start");
+        clicked => {
+            if (!Status.service_running) {
+                Status.start-service();
+            } else {
+                Status.stop-service();
+            }
+        }
+    }
+    Rectangle {}
+}
+
+
+export component Dashboard inherits Window {
+    preferred-width: 700px;
+    preferred-height: 500px;
+
+    title: @tr("LustBlock Dashboard");
+    icon: @image-url("../../../images/icon.png");
+    HorizontalLayout {
+        side-bar := SideBar {
+            title: @tr("LustBlock Dashboard");
+            model: [@tr("Menu" => "Status"), @tr("Menu" => "Reactions"), @tr("Menu" => "Sensitivity"), @tr("Menu" => "Advanced"), @tr("Menu" => "Logs"), @tr("Menu" => "About")];
+        }
+        if(side-bar.current-item == 0) : StatusPage{}
+        if(side-bar.current-item == 1) : ReactionsPage{}
+        if(side-bar.current-item == 2) : SensitivityPage{}
+        if(side-bar.current-item == 3) : AdvancedPage{}
+        if(side-bar.current-item == 4) : LogPage{}
+        if(side-bar.current-item == 5) : AboutPage{}
+    }
+}
