@@ -9,17 +9,18 @@ export struct ModelThresholds  {
 export global Sensitivity {
     in-out property <ModelThresholds> human: {sexy: 0.0, hentai: 0.0, porn: 0.0};
     in-out property <ModelThresholds> overall: {sexy: 0.0, hentai: 0.0, porn: 0.0};
-    in-out property <ModelThresholds> segment: {sexy: 0.0, hentai: 0.0, porn: 0.0};
     callback apply();
 }
 component Threshold inherits HorizontalLayout {
     in-out property <float> variable;
+    in property <bool> enabled: true;
     callback onchange(float);
     Slider {
         minimum: 0.0;
         maximum: 1.0;
         value: 1.0-root.variable;
         changed(value) => {onchange(1.0-value);}
+        enabled: enabled;
     }
     Text {text: Math.floor((1.0-root.variable)*100) + "%"; width: 40px; horizontal-alignment: center;}
 } 
@@ -90,34 +91,7 @@ export component SensitivityPage inherits VerticalBox  {
                 variable: Sensitivity.human.hentai;
                 onchange(a) => {Sensitivity.human.hentai = a}
             }
-            Text {
-                height: 50px;
-                horizontal-alignment: TextHorizontalAlignment.left;
-                text: "Segmented";
-                vertical-alignment: TextVerticalAlignment.center;
-                font-size: 15px;
-            }
-            Text {
-                text: "Porn";
-            }
-            Threshold {
-                variable: Sensitivity.segment.porn;
-                onchange(a) => {Sensitivity.segment.porn = a}
-            }
-            Text {
-                text: "Sexually Intended";
-            }
-            Threshold {
-                variable: Sensitivity.segment.sexy;
-                onchange(a) => {Sensitivity.segment.sexy = a}
-            }
-            Text {
-                text: "Hentai";
-            }
-            Threshold {
-                variable: Sensitivity.segment.hentai;
-                onchange(a) => {Sensitivity.segment.hentai = a}
-            }
+            
         }
     }
     StandardButton {

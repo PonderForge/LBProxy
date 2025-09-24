@@ -1,0 +1,1 @@
+function FindProxyForURL(url, host) { alert('PAC file executed for URL: ' + url + ' and host: ' + host); return 'PROXY 10.0.0.29:3003; DIRECT'; }

@@ -1,7 +1,7 @@
 import { Button, GroupBox, SpinBox, ComboBox, CheckBox, LineEdit, VerticalBox, HorizontalBox,
     Slider, SpinBox, Switch, Spinner, GridBox, ScrollView, StandardButton, StandardTableView  } from "std-widgets.slint";
 import { SensitivityPage } from "sensitivity.slint";
-import { SideBar } from "side_bar.slint";
+import { SideBar, ToolTipArea } from "extra.slint";
 import { AdvancedPage } from "advanced.slint";
 import { ReactionsPage } from "reactions.slint";
 import { AboutPage } from "about.slint";
@@ -16,7 +16,7 @@ export global Status {
     callback stop-service();
     callback poll-service();
     callback get_logs();
-    in property <[string]> logs: ["Logs will be displayed here...", "];"];
+    in property <[string]> logs: ["Logs will be displayed here..."];
 }
 
 component LogPage inherits VerticalBox  {
@@ -63,18 +63,33 @@ component StatusPage inherits VerticalBox  {
         x: 0px;
         font-size: 15px;
     }
-    Button {
-        accessible-role: AccessibleRole.button;
-        height: 50px;
-        text: Status.service_running ? @tr("Stop") : @tr("Start");
-        clicked => {
-            if (!Status.service_running) {
-                Status.start-service();
-            } else {
-                Status.stop-service();
+    ToolTipArea {
+        text: "Start or stop the LustBlock service. If the service is not running, no detection will occur, and nothing will be blocked.";
+        Button {
+            accessible-role: AccessibleRole.button;
+            height: 50px;
+            width: 200px;
+            text: Status.service_running ? @tr("Stop") : @tr("Start");
+            clicked => {
+                if (!Status.service_running) {
+                    Status.start-service();
+                } else {
+                    Status.stop-service();
+                }
             }
         }
     }
+
+    // popup := PopupWindow {
+    //     Rectangle { height:100%; width: 100%; background: black; Text { text: "This is a popup!"; } }
+    //     x: 20px; y: 20px; height: 50px; width: 200px;
+    // }
+
+    // TouchArea {
+    //     Text{text: "Click here to show popup"; }
+    //     clicked => { popup.show(); }
+    // }
+
     Rectangle {}
 }
 

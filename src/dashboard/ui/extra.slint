@@ -56,7 +56,48 @@ component SideBarItem inherits Rectangle {
         height: 100%;
     }
 }
+export component ToolTipArea inherits Window {
+    preferred-height: 100%;
+    preferred-width: 100%;
+     
+    in property <string> text;
+    in property <length> window-width;
 
+    Rectangle {
+        states [ 
+            visible when ta.has-hover: { 
+                opacity: 1;
+                in { 
+                    animate opacity { duration: 175ms; delay: 1000ms; }
+                }
+            }
+        ]
+
+        
+        y:  ta.mouse-y - hlayout.preferred-height;
+        z: 5;
+        background: #4d4d4d;
+        border-radius: 0.4rem;
+        opacity: 0;
+        width: hlayout.preferred-width;
+        height: hlayout.preferred-height;
+        hlayout := HorizontalLayout { 
+            padding: 0.6rem;
+            Text {
+                text <=> root.text;
+                wrap:word-wrap;
+                width: 15rem;
+                color: #000000;
+                z: 1000000;
+                font-size: root.default-font-size * 0.9;
+            }
+        }
+    }
+    ta := TouchArea {
+        z: -1;
+        @children
+    }
+}
 export component SideBar inherits Rectangle {
     in property <[string]> model: [];
     in property <string> title <=> label.text;

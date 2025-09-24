@@ -1,5 +1,5 @@
 import { Button, GroupBox, VerticalBox, HorizontalBox, Slider, ScrollView, StandardButton, CheckBox } from "std-widgets.slint";
-
+import { ToolTipArea } from "extra.slint";
 component NumberInput inherits TextInput {
     in property <int> input;
     text: input;
@@ -9,7 +9,7 @@ component NumberInput inherits TextInput {
 }
 
 export global AdvancedSettings {
-    callback apply(string, string, bool, bool);
+    callback apply(string, string, bool, bool, int);
     in property <bool> windows: true;
     in property <bool> startonboot: false;
     in property <bool> autoconnect: false;
@@ -18,6 +18,7 @@ export global AdvancedSettings {
     in property <int> ip3: 0;
     in property <int> ip4: 1;
     in property <int> port: 3003;
+    in property <int> smallestImage: 60;
 }
 
 export component AdvancedPage inherits VerticalBox {
@@ -33,61 +34,109 @@ export component AdvancedPage inherits VerticalBox {
         vertical-alignment: TextVerticalAlignment.center;
         font-size: 15px;
     }
-    HorizontalLayout {
-        
-        IPv41 := NumberInput {
-            input: AdvancedSettings.ip1;
-        }
-        Text {
-            text: ".";
-            width: 10px;
-        }
-        IPv42 := NumberInput {
-            input: AdvancedSettings.ip2;
-        }
-        Text {
-            text: ".";
-            width: 10px;
-        }
-        IPv43 := NumberInput {
-            input: AdvancedSettings.ip3;
-        }
-        Text {
-            text: ".";
-            width: 10px;
-        }
-        IPv44 := NumberInput {
-            input: AdvancedSettings.ip4;
-        }
-        Text {
-            text: ":";
-            width: 10px;
-        }
-        IPv4Port := NumberInput {
-            input: AdvancedSettings.port;
+    ToolTipArea {
+        text : "This will IP address and port that the computer and anything else would use to connect to the LustBlock proxy.";
+        HorizontalLayout {
+            NumberInput {
+                input: AdvancedSettings.ip1;
+                edited => {
+                    AdvancedSettings.ip1 = self.text.to-float();
+                }
+            }
+            Text {
+                text: ".";
+                width: 10px;
+            }
+            NumberInput {
+                input: AdvancedSettings.ip2;
+                edited => {
+                    AdvancedSettings.ip2 = self.text.to-float();
+                }
+            }
+            Text {
+                text: ".";
+                width: 10px;
+            }
+            NumberInput {
+                input: AdvancedSettings.ip3;
+                edited => {
+                    AdvancedSettings.ip3 = self.text.to-float();
+                }
+            }
+            Text {
+                text: ".";
+                width: 10px;
+            }
+            NumberInput {
+                input: AdvancedSettings.ip4;
+                edited => {
+                    AdvancedSettings.ip4 = self.text.to-float();
+                }
+            }
+            Text {
+                text: ":";
+                width: 10px;
+            }
+            NumberInput {
+                input: AdvancedSettings.port;
+                edited => {
+                    AdvancedSettings.port = self.text.to-float();
+                }
+            }
         }
     }
-    AutoconnectCheckbox := CheckBox {
-        text: "Autoconnect Computer to Proxy (Windows Only)";
-        enabled: AdvancedSettings.windows;
-        checked: AdvancedSettings.autoconnect;
+    ToolTipArea {
+        text : "This will automatically connect your computer to the LustBlock proxy when activated.";
+        CheckBox {
+            text: "Autoconnect Computer to Proxy (Windows Only)";
+            enabled: AdvancedSettings.windows;
+            checked: AdvancedSettings.autoconnect;
+            toggled() => {
+                AdvancedSettings.autoconnect = self.checked;
+            }
+        }
     }
-    StartOnBootupCheckbox := CheckBox {
-        text: "Start on Bootup";
-        checked: AdvancedSettings.startonboot;
+    ToolTipArea {
+        text : "This will automatically start the LustBlock proxy on computer boot.";
+        CheckBox {
+            text: "Start on Bootup";
+            checked: AdvancedSettings.startonboot;
+            toggled() => {
+                AdvancedSettings.startonboot = self.checked;
+            }
+        }
+    }
+    ToolTipArea {
+        text : "This is the smallest image size (pixels x pixels) that will be scanned for LustBlock. Images smaller than this will not be scanned. Useful for performance on low-end devices.";
+        HorizontalLayout {
+            Text {
+                text: "Smallest Image to Scan: ";
+            }
+            NumberInput {
+                input: AdvancedSettings.smallestImage;
+                edited => {
+                    AdvancedSettings.smallestImage = self.text.to-float();
+                }
+            }
+            Text{
+                text: "px";
+                width: 20px;
+            }
+        }
     }
     Rectangle {}
     StandardButton {
         kind: apply;
         clicked => {
             AdvancedSettings.apply(
-                IPv41.text + "." +
-                IPv42.text + "." +
-                IPv43.text + "." +
-                IPv44.text,
-                IPv4Port.text,
-                AutoconnectCheckbox.checked,
-                StartOnBootupCheckbox.checked
+                AdvancedSettings.ip1 + "." +
+                AdvancedSettings.ip2 + "." +
+                AdvancedSettings.ip3 + "." +
+                AdvancedSettings.ip4,
+                AdvancedSettings.port,
+                AdvancedSettings.autoconnect,
+                AdvancedSettings.startonboot,
+                AdvancedSettings.smallestImage
             );
         }
     }

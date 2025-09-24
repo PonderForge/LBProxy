@@ -62,15 +62,11 @@ So AIs are not completely accurate (ours is 93%), and LustBlock only returns the
 Since we run 2 different AIs on every image, we thought it best to add per-site settings!\
 In config.yaml, at the bottom, you can add your site domains and set whether or not the human-based filter runs, the image-based filter runs, or whether the site is allowed in the first place! (Blacklist) Personally, I suggest blacklisting all known porn sites on there, we'll add in our own global blacklist at some point.
 # TODO
-1. Better Human and Image Replacement (My Cat is great but he's stretched too thin)
-2. Improve Human OBB with OpenImages Dataset
 3. Add Human Segmentation to give people clothes where they need it (Cause they're too lazy to do it themselves?)
 4. Video Scanning: It'll be slow as molasses but hey, sexual free content!
 5. Text Scanning: Using FastText and OCR
 6. Encrypted Porn Website blocker: Since many websites are 100% porn, we want to add a encrypted list of websites that should be completely blocked and blacklisted.
-7. Client and Server based Proxy: This will allow phones and older computers to run the proxy by configuring the device and then connecting to a remote computer that runs the server.
 8. Scan POST requests: Cause people also send out images, we need to scan those for sexting, and other forms of porn and sexual images.
-9. Better Client Integration with OS: Having a program visibally run is annoying, we need to hide it in the system tray, and have setting editing via GUI. And anti-virus exceptions!
 # Contributing
 I know that there's a lot of bugs, but that's were you come in! I need beta testers, programmers, hackers, etcetera, to find problems. Beta testers, please don't purposely find sexy images, but if you happen to come across them with LustBlock on, submit a issue (just not the problematic photo)! Programmers, I'm just one man, plus my calculus professor keeps giving me homework, so please, if you have optimizations, submit a issue! Hackers, I know the program is insecure, so make it secure! I'm not a expert, but I am willing to work with people! THX!
 If you want to donate, donate to my church at [firste.org](https://firste.org).

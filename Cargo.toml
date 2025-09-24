@@ -1,5 +1,5 @@
 [package]
-name = "lustblock"
+name = "LBProxy"
 version = "0.2.0"
 edition = "2021"
 
@@ -30,7 +30,7 @@ bytes = "1.5.0"
 rand = "0.8.5"
 dirs-next = "2.0.0"
 windows-registry = "0.5.0"
-opencv = { version = "0.93.4", default-features = false , features = ["clang-runtime", "imgcodecs", "imgproc", "dnn"] }
+opencv = { version = "0.93.4", default-features = false , features = ["imgcodecs", "imgproc", "dnn"] }
 yaml-rust2 = "0.9"
 flate2 = "1.0.34"
 slint = {version = "1.10.0"}
@@ -44,6 +44,7 @@ ctrlc = { version = "3.4.6", features = ["termination"] }
 rev_buf_reader = "0.3.0"
 http-mitm-proxy = "0.14.0"
 log = "0.4.27"
+windows = { version = "0.58.0", features = ["Win32_Security_Cryptography"] }
 
 [build-dependencies]
 winresource = "0.1.17"
