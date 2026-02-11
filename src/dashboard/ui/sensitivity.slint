@@ -18,11 +18,11 @@ component Threshold inherits HorizontalLayout {
     Slider {
         minimum: 0.0;
         maximum: 1.0;
-        value: 1.0-root.variable;
-        changed(value) => {onchange(1.0-value);}
+        value: root.variable;
+        changed(value) => {onchange(value);}
         enabled: enabled;
     }
-    Text {text: Math.floor((1.0-root.variable)*100) + "%"; width: 40px; horizontal-alignment: center;}
+    Text {text: Math.floor((root.variable)*100) + "%"; width: 40px; horizontal-alignment: center;}
 } 
 export component SensitivityPage inherits VerticalBox  {
     accessible-role: tab-panel;

@@ -1,18 +1,17 @@
-//#![windows_subsystem = "windows"]
-use std::{cfg, io::Read, path::{Path, PathBuf}, time::Instant};
+#![windows_subsystem = "windows"]
+use std::{io::{Cursor, Read}, path::{Path, PathBuf}};
 use bytes::BytesMut;
 use clap::Args;
 use data::Data;
-use http_body_util::{BodyExt, Full};
+use http_body_util::BodyExt;
 use http_mitm_proxy::{moka::sync::Cache, DefaultClient, MitmProxy};
-use hyper::{header::{HeaderValue, CONTENT_ENCODING, CONTENT_LENGTH, CONTENT_TYPE}, service::service_fn, StatusCode};
+use hyper::{StatusCode, body::{Incoming}, header::{CONTENT_ENCODING, CONTENT_LENGTH, CONTENT_TYPE, HeaderValue}, service::service_fn};
 use hyper::Response;
 use hyper::body::Bytes;
 use dirs_next;
-use opencv::imgcodecs::IMREAD_UNCHANGED;
-use opencv::core::*;
+use image::{DynamicImage, ImageFormat, ImageReader};
 use flate2::read::GzDecoder;
-use settings::{LBSettings, Reaction};
+use crate::settings::{LBSettings, Reaction, from_exe_dir};
 use ftail::Ftail;
 use log::{{info, debug}, LevelFilter};
 use openlb::img_filter::*;
@@ -21,7 +20,7 @@ mod data;
 #[path = "../settings.rs"]
 mod settings;
 
-//Structs for Sanity
+// Structs for Sanity
 #[derive(Args, Debug)]
 struct ExternalCert {
     #[arg(required = false)]
@@ -42,11 +41,11 @@ async fn main() {
         .init().unwrap();
     info!("Initializing LBProxy...");
 
-    //Read Config File
+    // Read Config File
     let public_key = std::fs::read(Path::new(format!("{}pub.crt", configdir).as_str()));
     let private_key = std::fs::read_to_string(Path::new(format!("{}priv.crt", configdir).as_str()));
     let config: LBSettings = bincode::decode_from_std_read(&mut std::fs::File::open(format!("{}config.bin", configdir).as_str()).unwrap(), bincode::config::standard()).unwrap();
-    //Check if the HTTPS keys exist
+    // Check if the HTTPS keys exist
     let root_cert = if !public_key.is_err() && !private_key.is_err() {
         // If so, use the existing keys
         let param = rcgen::CertificateParams::from_ca_cert_der(
@@ -58,14 +57,16 @@ async fn main() {
 
         rcgen::CertifiedKey { cert, key_pair }
     } else {
-        //Else, make and save them
+        // Else, make and save them
         debug!("Creating new Certficate...");
         make_root_cert(&configdir)
     };
-    let der = root_cert.cert.der().clone();
-    let cleaner = ImgCleaner::init(Some(config.human_thres), Some(config.overall_thres), None);
-    debug!("Warming Up AI Models...");
-    cleaner.warmup(10);
+    let mut image_class_vec: Vec<u8> = Vec::new();
+    std::fs::File::open(from_exe_dir("models/img_classifier.onnx")).unwrap().read_to_end(&mut image_class_vec).unwrap();
+    let mut human_det_vec: Vec<u8> = Vec::new();
+    std::fs::File::open(from_exe_dir("models/human_detector.onnx")).unwrap().read_to_end(&mut human_det_vec).unwrap();
+    let cleaner = ImgCleaner::builder().with_human_detector(human_det_vec).with_image_classifier(image_class_vec).with_human_thres(config.human_thres).with_overall_thres(config.overall_thres).with_min_human_size(config.human_min_scan).commit();
+    let root_der = root_cert.cert.der().clone();
     let proxy = MitmProxy::new(
         // This is the root cert that will be used to sign the fake certificates
         Some(root_cert),
@@ -85,102 +86,80 @@ async fn main() {
                     let uri = req.uri().clone();
                     let (res, _upgrade) = client.send_request(req).await?;
                     let uri_domain = uri.host().unwrap();
-                    info!("{} -> {}", uri_domain, res.status());
                     let default_content_type: HeaderValue = HeaderValue::from_str("application/octet-stream").unwrap();
                     let default_content_encoding: HeaderValue = HeaderValue::from_str("none").unwrap();
-                    //Check if the data is a image via Content-Type Header
+                    // Check if the data is a image via Content-Type Header
                     let content_type = res.headers().get(CONTENT_TYPE).unwrap_or_else(||{&default_content_type}).clone();
-                    //Check if the data is compressed via Content-Encoding Header
+                    // Check if the data is compressed via Content-Encoding Header
                     let content_encoding = res.headers().get(CONTENT_ENCODING).unwrap_or_else(||{&default_content_encoding}).clone();
-                    //Get site domain's settings 
+                    // Grab original response HTTP version for Spoofing
+                    let http_v = res.version().clone();
+                    // Grab original response HTTP version for Spoofing
+                    let res_code = res.status().clone();
+                    // Get site domain's settings 
                     let decoded_reaction = site_reactions.get(uri_domain);
                     let reaction = if decoded_reaction.is_none() {
                         config.def_reaction
                     } else {
                         *decoded_reaction.unwrap()
                     };
-                    //Grab original response HTTP version for Spoofing
-                    let http_v = res.version().clone();
-                    //Convert Body Stream into bytes
+                    let (mut input, output) = Incoming::channel();
+                    // Convert Body Stream into bytes
                     let (mut parts, mut data) = res.into_parts();
-                    //Provide LBProxy PAC File
-                    // if uri.path().contains("lbserver.pac") {
-                    //     println!("LBProxy PAC File Requested");
-                    //     let mut after = Response::<Full<Bytes>>::from_parts(parts, Full::<Bytes>::from("function FindProxyForURL(url, host) { alert('PAC file executed for URL: ' + url + ' and host: ' + host);return 'PROXY 127.0.0.1:3003; DIRECT';}"));
-                    //     *after.version_mut() = http_v;
-                    //     return Ok::<_, http_mitm_proxy::default_client::Error>(after);
-                    // }
-                    //Scan image if it is an image
+                    // Scan image if it is an image
                     if (content_type == "image/jpeg" || content_type == "image/png" || content_type == "image/webp" || content_type == "image/tiff") && (reaction != Reaction::Allow && reaction != Reaction::Deny) {
                         let mut body = BytesMut::new();
                         while let Some(Ok(chunk)) = data.frame().await {
                             body.extend(chunk.into_data().unwrap());
                         }
-                        let mut  end_stats = String::new();
-                        println_buffer(&mut end_stats, "Image Detected");
-
-                        //Process the img
-                        let input_img: Mat = if content_encoding == "gzip" {
-                            println_buffer(&mut end_stats, "  Compression");
+                        // Process the img
+                        let input_img: DynamicImage = if content_encoding == "gzip" {
                             let mut stor: Vec<u8> = Vec::new();
                             let indat = &body.to_vec()[..];
                             let mut decoder = GzDecoder::new(indat);
-                            let decode_result = decoder.read_to_end(&mut stor);
-                            if decode_result.is_err() {
-                                panic!("Compressed Image is not extractable! File an issue pls.");
-                            }
-                            opencv::imgcodecs::imdecode(
-                                &opencv::core::Mat::from_slice(&stor).unwrap(),
-                                IMREAD_UNCHANGED,
-                            ).unwrap()
+                            decoder.read_to_end(&mut stor).unwrap();
+                            ImageReader::new(Cursor::new(&stor)).with_guessed_format().unwrap().decode().unwrap()
                         } else {
-                            opencv::imgcodecs::imdecode(
-                                &opencv::core::Mat::from_slice(&body.to_vec()).unwrap(),
-                                IMREAD_UNCHANGED,
-                            ).unwrap()
+                            ImageReader::new(Cursor::new(&body.to_vec())).with_guessed_format().unwrap().decode().unwrap()
                         };
-                        let now = Instant::now();
-                        let mut output_img: Option<Mat> = None;
-                        if input_img.rows() > config.smallest_scan || input_img.cols() > config.smallest_scan {
+                        let mut output_img: Option<DynamicImage> = None;
+                        if input_img.height() > config.smallest_scan || input_img.width() > config.smallest_scan {
+                            //input_img.clone().save(format!("out/{}.jpg", rand::thread_rng().gen_range(0..500))).unwrap();
                             if reaction == Reaction::Combination {
-                                output_img = cleaner.clean_mat(&input_img, ImgCleanLevel::Human);
+                                output_img = cleaner.clean_image(input_img.clone(), ImgCleanLevel::Human);
                                 if output_img.is_none() {
-                                    output_img = cleaner.clean_mat(&input_img, ImgCleanLevel::Overall);
+                                    output_img = cleaner.clean_image(input_img, ImgCleanLevel::Overall);
                                 }
                             } else if reaction == Reaction::Human {
-                                output_img = cleaner.clean_mat(&input_img, ImgCleanLevel::Human);
+                                output_img = cleaner.clean_image(input_img, ImgCleanLevel::Human);
                             } else if reaction == Reaction::Overall {
-                                output_img = cleaner.clean_mat(&input_img, ImgCleanLevel::Overall);
+                                output_img = cleaner.clean_image(input_img, ImgCleanLevel::Overall);
                             }
-                            println_buffer(&mut end_stats, &format!("  Time: {:?}", now.elapsed()));
-                        } else {
-                            println_buffer(&mut end_stats, "  Image is Too Small: Allowed");
-                            parts.headers.insert("LBProxy-Tagged", 0.into());
                         }
-                        if output_img.is_some() {
-                            let mut bytes = Vector::new();
-                            let _ = opencv::imgcodecs::imencode(if content_type == "image/png" {".png"} else if content_type == "image/webp" {".webp"} else {".jpg"}, &output_img.unwrap(), &mut bytes, &opencv::core::Vector::new());
+                        let img_code: &str = if output_img.is_some() {
+                            let mut bytes: Vec<u8> = Vec::new();
+                            output_img.unwrap().write_to(&mut Cursor::new(&mut bytes), if content_type == "image/png" {ImageFormat::Png} else if content_type == "image/webp" {ImageFormat::WebP} else {ImageFormat::Jpeg}).unwrap();
                             parts.headers.insert(CONTENT_LENGTH, bytes.len().into());
-                            //Finish the recognition by printing the buffered stats
+                            // Finish the recognition by printing the buffered stats
                             body = BytesMut::from(bytes.as_slice());
-                            info!("{}", &end_stats);
-                        }
-                        let mut after = Response::<Full<Bytes>>::from_parts(parts, Full::new(body.into()));
-                        *after.version_mut() = http_v;
-                        return Ok::<_, http_mitm_proxy::default_client::Error>(after);
+                            "NSFW"
+                        } else {
+                            "Clean"
+                        };
+                        input.try_send_data(body.freeze()).unwrap();
+                        info!("{} -> {}", uri_domain, img_code);
+                        return Ok::<_, http_mitm_proxy::default_client::Error>(Response::<Incoming>::from_parts(parts, output));
                     }
+                    info!("{} -> {}", uri_domain, res_code);
                     //Reconstruct and return response 
                     if reaction == Reaction::Deny {
-                        let mut after = Response::<Full<Bytes>>::from_parts(parts, Full::<Bytes>::from("YOU SHALL NOT SEE!"));
+                        input.try_send_data(Bytes::from("YOU SHALL NOT SEE!")).unwrap();
+                        let mut after = Response::<Incoming>::from_parts(parts, output);
                         *after.version_mut() = http_v;
                         *after.status_mut() = StatusCode::FORBIDDEN;
                         Ok::<_, http_mitm_proxy::default_client::Error>(after)
                     } else {
-                        let mut body = BytesMut::new();
-                        while let Some(Ok(chunk)) = data.frame().await {
-                            body.extend(chunk.into_data().unwrap());
-                        }
-                        let mut after = Response::<Full<Bytes>>::from_parts(parts, Full::new(body.into()));
+                        let mut after = Response::<Incoming>::from_parts(parts, data);
                         *after.version_mut() = http_v;
                         Ok::<_, http_mitm_proxy::default_client::Error>(after)
                     }
@@ -198,10 +177,8 @@ async fn main() {
             let proxy_url = format!("{}:{}", &config.ip, config.port);
             let proxy_register = proxy_set.get_string("ProxyServer");
             let _ = proxy_set.set_u32("ProxyEnable", 1);
-            if proxy_register.is_err() {
-                install_cert(&der);
-            } else if proxy_register.unwrap() != proxy_url {
-                install_cert(&der);
+            if proxy_register.is_err() || proxy_register.unwrap() != proxy_url {
+                install_cert(&root_der);
             }
             let _ = proxy_set.set_string("ProxyServer", &proxy_url);
             info!("Proxy added to Computer Network Stack");
@@ -218,7 +195,7 @@ async fn main() {
 
 }
 
-//Create Certificate for MITM
+// Create Certificate for MITM
 fn make_root_cert(configdir: &String) -> rcgen::CertifiedKey {
     let mut param = rcgen::CertificateParams::default();
 
@@ -240,21 +217,24 @@ fn make_root_cert(configdir: &String) -> rcgen::CertifiedKey {
     rcgen::CertifiedKey { cert, key_pair }
 }
 
+// fn image_type_scan (packet: &[u8]) -> bool {
+//     let png = packet[0..8] == [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
+//     let jpeg = packet[0..3] == [0xff, 0xd8, 0xff];
+//     let webp = packet[0..4] == *b"RIFF" && packet[8..16] == *b"WEBPVP8 " ;
+//     let tiff = packet[0..5] == [0x49, 0x49, 0x2A, 0x00] || packet[0..5] == [0x4D, 0x4D, 0x00, 0x2A];
+//     if png || jpeg || webp || tiff {
+//         return true
+//     }
+//     return false;
+// }
 
-//Adds on to console buffer to be released all at once for comprehensible output 
-fn println_buffer (buffer: &mut String, print: &str) {
-    buffer.push_str(print);
-    buffer.push_str("\n");
-}
+#[cfg(target_family = "windows")]
 fn install_cert(der: &[u8]) {
-    #[cfg(target_family = "windows")]
-    {  
-        info!("Adding to Root Certificate Store");
-        use windows::Win32::Security::Cryptography::*;
-        unsafe {
-            let store: HCERTSTORE = CertOpenSystemStoreA(None, windows::core::PCSTR::from_raw("ROOT".as_ptr())).unwrap();
-            CertAddEncodedCertificateToStore(store, X509_ASN_ENCODING | PKCS_7_ASN_ENCODING, &der, CERT_STORE_ADD_NEWER, None).unwrap();
-            CertCloseStore(store, 0).unwrap();
-        }
+    info!("Adding to Root Certificate Store");
+    use windows::Win32::Security::Cryptography::*;
+    unsafe {
+        let store: HCERTSTORE = CertOpenSystemStoreA(None, windows::core::PCSTR::from_raw("ROOT".as_ptr())).unwrap();
+        CertAddEncodedCertificateToStore(store, X509_ASN_ENCODING | PKCS_7_ASN_ENCODING, &der, CERT_STORE_ADD_NEWER, None).unwrap();
+        CertCloseStore(store, 0).unwrap();
     }
 }

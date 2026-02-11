@@ -1,8 +1,9 @@
-use std::{ffi::OsStr, io::BufRead, sync::{Arc, Mutex}};
+#![windows_subsystem = "windows"]
+use std::{ffi::{OsStr, OsString, os_str}, io::BufRead, process::Command, sync::{Arc, Mutex}};
 use openlb::img_filter::ImgThresholds;
 use slint::{Model, ModelRc, SharedString};
 use sysinfo::System;
-use settings::{LBSettings, Reaction};
+use crate::settings::{LBSettings, Reaction, from_exe_dir};
 use auto_launch::*;
 
 #[path = "../settings.rs"]
@@ -12,12 +13,8 @@ slint::include_modules!();
 
 #[cfg(target_family = "windows")]
 const EXEC_NAME: &str = "lb-service.exe"; 
-#[cfg(target_family = "windows")]
-const PROCESS_NAME: &str = "lb-service.exe";
 #[cfg(target_family = "unix")] 
-const EXEC_NAME: &str = "./lb-service"; 
-#[cfg(target_family = "unix")] 
-const PROCESS_NAME: &str = "lb-service";
+const EXEC_NAME: &str = "lb-service"; 
 fn main () {
     let configdir = format!("{}/LBProxy/", dirs_next::config_dir().unwrap().to_str().unwrap());
     std::fs::create_dir_all(&configdir).unwrap();
@@ -34,6 +31,7 @@ fn main () {
                 def_reaction: Reaction::Combination,
                 web_reactions: std::collections::HashMap::new(),
                 smallest_scan: 60,
+                human_min_scan: 100
             };
             bincode::encode_into_std_write(&settings, &mut std::fs::File::create(format!("{}config.bin", &configdir).as_str()).unwrap(), bincode::config::standard()).unwrap();
             settings
@@ -49,11 +47,14 @@ fn main () {
         let ui_handle = ui.as_weak();
         move || {
             println!("Starting lb-service...");
-            #[cfg(target_family = "windows")]
-            std::process::Command::new("cmd").args(["/C", &format!("start {}", EXEC_NAME)]).spawn().unwrap();
+            #[cfg(target_family = "windows")] {
+                let binding = from_exe_dir(EXEC_NAME);
+                duct::cmd!("cmd", "/C", "start", "", binding).run().unwrap();
+            }
+            
             #[cfg(target_family = "unix")]
-            std::process::Command::new("sh").args(["-c", &format!("{}", EXEC_NAME)]).spawn().unwrap();
-            let ui = ui_handle.unwrap();  
+            std::process::Command::new("sh").args(["-c", &format!(r#""{}""#, from_exe_dir(EXEC_NAME).to_str().unwrap())]).spawn().unwrap();
+            let ui = ui_handle.unwrap();
             let s = System::new_all();
             check_service(s, &ui);
         }
@@ -97,21 +98,15 @@ fn main () {
     AdvancedSettings::get(&ui).set_ip2(ipsplit[1].parse::<i32>().unwrap());
     AdvancedSettings::get(&ui).set_ip3(ipsplit[2].parse::<i32>().unwrap());
     AdvancedSettings::get(&ui).set_ip4(ipsplit[3].parse::<i32>().unwrap());
-    AdvancedSettings::get(&ui).set_smallestImage(config.smallest_scan);
+    AdvancedSettings::get(&ui).set_smallestImage(config.smallest_scan as i32);
+    AdvancedSettings::get(&ui).set_smallestHumanImage(config.human_min_scan as i32);
     let auto = AutoLaunchBuilder::new()
         .set_app_name("LBProxy")
-        .set_app_path(&format!("{}\\{}", std::env::current_dir().unwrap().to_str().unwrap(), EXEC_NAME))
+        .set_app_path(from_exe_dir(EXEC_NAME).to_str().unwrap())
         .build()
         .unwrap();
     AdvancedSettings::get(&ui).set_startonboot({
-        #[cfg(target_family = "windows")]
-        {
             auto.is_enabled().unwrap()
-        }
-        #[cfg(not(target_family = "windows"))]
-        {
-            false
-        }
     });
     AdvancedSettings::get(&ui).set_port(config.port as i32);
     let config = Arc::new(Mutex::new(config));
@@ -123,8 +118,8 @@ fn main () {
             let ui = ui_handle.unwrap();
             println!("Stopping lb-service...");
             let s = System::new_all();
-            for process in s.processes_by_name(OsStr::new(PROCESS_NAME)) {
-                if process.name() == PROCESS_NAME {
+            for process in s.processes_by_name(OsStr::new(EXEC_NAME)) {
+                if process.name() == EXEC_NAME {
                     let _ = process.kill();
                     #[cfg(target_family = "windows")]
                     {
@@ -235,23 +230,21 @@ fn main () {
         let config = config.clone();
         let configdir = configdir.clone();
 
-        move |ip: SharedString, port: SharedString, autoconnect: bool, startonboot: bool, smallestscan: i32| {
+        move |ip: SharedString, port: SharedString, autoconnect: bool, startonboot: bool, smallestscan: i32, smallest_human_image: i32| {
             let mut config = config.lock().unwrap();
 
             config.ip = ip.clone().into();
             config.port = port.parse::<u16>().unwrap();
             config.autoconnect = autoconnect;
-            config.smallest_scan = smallestscan;
-            #[cfg(target_family = "windows")]
-            {
-                if startonboot {
-                    println!("Setting lb-service to start on boot.");
-                    auto.enable().unwrap();
-                } else {
-                    if auto.is_enabled().unwrap() {
-                        println!("Removing lb-service from startup.");
-                        auto.disable().unwrap();
-                    }
+            config.smallest_scan = smallestscan as u32;
+            config.human_min_scan = smallest_human_image as u32;
+            if startonboot {
+                println!("Setting lb-service to start on boot.");
+                auto.enable().unwrap();
+            } else {
+                if auto.is_enabled().unwrap() {
+                    println!("Removing lb-service from startup.");
+                    auto.disable().unwrap();
                 }
             }
             if bincode::encode_into_std_write(&*config, &mut std::fs::File::create(format!("{}config.bin", &configdir).as_str()).unwrap(), bincode::config::standard()).is_err() {
@@ -265,8 +258,8 @@ fn main () {
 }
 
 fn check_service (s: System, window: &Dashboard) {
-    for process in s.processes_by_name(OsStr::new(PROCESS_NAME)) {
-        if process.name() == PROCESS_NAME {
+    for process in s.processes_by_name(OsStr::new(EXEC_NAME)) {
+        if process.name() == EXEC_NAME {
             Status::get(&window).set_service_running(true.into());
             return;
         }

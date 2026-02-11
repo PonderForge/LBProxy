@@ -9,7 +9,7 @@ component NumberInput inherits TextInput {
 }
 
 export global AdvancedSettings {
-    callback apply(string, string, bool, bool, int);
+    callback apply(string, string, bool, bool, int, int);
     in property <bool> windows: true;
     in property <bool> startonboot: false;
     in property <bool> autoconnect: false;
@@ -19,6 +19,7 @@ export global AdvancedSettings {
     in property <int> ip4: 1;
     in property <int> port: 3003;
     in property <int> smallestImage: 60;
+    in property <int> smallestHumanImage: 60;
 }
 
 export component AdvancedPage inherits VerticalBox {
@@ -124,6 +125,24 @@ export component AdvancedPage inherits VerticalBox {
             }
         }
     }
+    ToolTipArea {
+        text : "This is the smallest human image size (pixels x pixels) that will be scanned for LustBlock. Humans smaller than this will not be scanned. Useful for performance on low-end devices, or humans that are inconsequential.";
+        HorizontalLayout {
+            Text {
+                text: "Smallest Human to Scan: ";
+            }
+            NumberInput {
+                input: AdvancedSettings.smallestHumanImage;
+                edited => {
+                    AdvancedSettings.smallestHumanImage = self.text.to-float();
+                }
+            }
+            Text{
+                text: "px";
+                width: 20px;
+            }
+        }
+    }
     Rectangle {}
     StandardButton {
         kind: apply;
@@ -136,7 +155,8 @@ export component AdvancedPage inherits VerticalBox {
                 AdvancedSettings.port,
                 AdvancedSettings.autoconnect,
                 AdvancedSettings.startonboot,
-                AdvancedSettings.smallestImage
+                AdvancedSettings.smallestImage,
+                AdvancedSettings.smallestHumanImage
             );
         }
     }
