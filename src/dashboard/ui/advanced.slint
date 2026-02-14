@@ -1,0 +1,163 @@
+import { Button, GroupBox, VerticalBox, HorizontalBox, Slider, ScrollView, StandardButton, CheckBox } from "std-widgets.slint";
+import { ToolTipArea } from "extra.slint";
+component NumberInput inherits TextInput {
+    in property <int> input;
+    text: input;
+    input-type: number;
+    height: 20px;
+    horizontal-alignment: TextHorizontalAlignment.center;
+}
+
+export global AdvancedSettings {
+    callback apply(string, string, bool, bool, int, int);
+    in property <bool> windows: true;
+    in property <bool> startonboot: false;
+    in property <bool> autoconnect: false;
+    in property <int> ip1: 127;
+    in property <int> ip2: 0;
+    in property <int> ip3: 0;
+    in property <int> ip4: 1;
+    in property <int> port: 3003;
+    in property <int> smallestImage: 60;
+    in property <int> smallestHumanImage: 60;
+}
+
+export component AdvancedPage inherits VerticalBox {
+    Text {
+        font-size: 20px;
+        height: 50px;
+        text: @tr("Advanced Settings");
+    }
+    Text {
+        height: 50px;
+        horizontal-alignment: TextHorizontalAlignment.left;
+        text: "IPv4 Address & Port";
+        vertical-alignment: TextVerticalAlignment.center;
+        font-size: 15px;
+    }
+    ToolTipArea {
+        text : "This will IP address and port that the computer and anything else would use to connect to the LustBlock proxy.";
+        HorizontalLayout {
+            NumberInput {
+                input: AdvancedSettings.ip1;
+                edited => {
+                    AdvancedSettings.ip1 = self.text.to-float();
+                }
+            }
+            Text {
+                text: ".";
+                width: 10px;
+            }
+            NumberInput {
+                input: AdvancedSettings.ip2;
+                edited => {
+                    AdvancedSettings.ip2 = self.text.to-float();
+                }
+            }
+            Text {
+                text: ".";
+                width: 10px;
+            }
+            NumberInput {
+                input: AdvancedSettings.ip3;
+                edited => {
+                    AdvancedSettings.ip3 = self.text.to-float();
+                }
+            }
+            Text {
+                text: ".";
+                width: 10px;
+            }
+            NumberInput {
+                input: AdvancedSettings.ip4;
+                edited => {
+                    AdvancedSettings.ip4 = self.text.to-float();
+                }
+            }
+            Text {
+                text: ":";
+                width: 10px;
+            }
+            NumberInput {
+                input: AdvancedSettings.port;
+                edited => {
+                    AdvancedSettings.port = self.text.to-float();
+                }
+            }
+        }
+    }
+    ToolTipArea {
+        text : "This will automatically connect your computer to the LustBlock proxy when activated.";
+        CheckBox {
+            text: "Autoconnect Computer to Proxy (Windows Only)";
+            enabled: AdvancedSettings.windows;
+            checked: AdvancedSettings.autoconnect;
+            toggled() => {
+                AdvancedSettings.autoconnect = self.checked;
+            }
+        }
+    }
+    ToolTipArea {
+        text : "This will automatically start the LustBlock proxy on computer boot.";
+        CheckBox {
+            text: "Start on Bootup";
+            checked: AdvancedSettings.startonboot;
+            toggled() => {
+                AdvancedSettings.startonboot = self.checked;
+            }
+        }
+    }
+    ToolTipArea {
+        text : "This is the smallest image size (pixels x pixels) that will be scanned for LustBlock. Images smaller than this will not be scanned. Useful for performance on low-end devices.";
+        HorizontalLayout {
+            Text {
+                text: "Smallest Image to Scan: ";
+            }
+            NumberInput {
+                input: AdvancedSettings.smallestImage;
+                edited => {
+                    AdvancedSettings.smallestImage = self.text.to-float();
+                }
+            }
+            Text{
+                text: "px";
+                width: 20px;
+            }
+        }
+    }
+    ToolTipArea {
+        text : "This is the smallest human image size (pixels x pixels) that will be scanned for LustBlock. Humans smaller than this will not be scanned. Useful for performance on low-end devices, or humans that are inconsequential.";
+        HorizontalLayout {
+            Text {
+                text: "Smallest Human to Scan: ";
+            }
+            NumberInput {
+                input: AdvancedSettings.smallestHumanImage;
+                edited => {
+                    AdvancedSettings.smallestHumanImage = self.text.to-float();
+                }
+            }
+            Text{
+                text: "px";
+                width: 20px;
+            }
+        }
+    }
+    Rectangle {}
+    StandardButton {
+        kind: apply;
+        clicked => {
+            AdvancedSettings.apply(
+                AdvancedSettings.ip1 + "." +
+                AdvancedSettings.ip2 + "." +
+                AdvancedSettings.ip3 + "." +
+                AdvancedSettings.ip4,
+                AdvancedSettings.port,
+                AdvancedSettings.autoconnect,
+                AdvancedSettings.startonboot,
+                AdvancedSettings.smallestImage,
+                AdvancedSettings.smallestHumanImage
+            );
+        }
+    }
+}

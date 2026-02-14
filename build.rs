@@ -10,8 +10,9 @@ fn main() -> io::Result<()> {
     if env::var_os("CARGO_CFG_WINDOWS").is_some() {
         WindowsResource::new()
             // This path can be absolute, or relative to your crate root.
-            .set_icon("icon.ico")
+            .set_icon("images/icon.ico")
             .compile()?;
     }
+    slint_build::compile("src/dashboard/ui/dashboard.slint").unwrap();
     Ok(())
 }

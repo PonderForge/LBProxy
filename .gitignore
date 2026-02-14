@@ -1,6 +1,2 @@
-
 /target
-*.crt
 /release
-/windows-release
-windows-release.7z

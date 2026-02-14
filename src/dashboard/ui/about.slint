@@ -1,0 +1,34 @@
+import { Button, GroupBox, VerticalBox, StandardTableView, ComboBox, ScrollView, StandardButton, ListView } from "std-widgets.slint";
+
+export component AboutPage inherits VerticalBox  {
+    accessible-role: tab-panel;
+    Text {
+        font-size: 20px;
+        text: @tr("About");
+    }
+    Text {
+        horizontal-alignment: TextHorizontalAlignment.left;
+        text: "LustBlock Version: v0.2.0";
+        vertical-alignment: TextVerticalAlignment.center;
+        font-size: 14px;
+    }
+    Text {
+        horizontal-alignment: TextHorizontalAlignment.left;
+        text: "Produced and Developed by:";
+        vertical-alignment: TextVerticalAlignment.center;
+        font-size: 14px;
+    }
+    Image {
+        height: 300px;
+        source: @image-url("../../../images/pf.jpg");
+        width: 350px;
+    }
+    Text {
+        horizontal-alignment: TextHorizontalAlignment.left;
+        text: "This was created by PonderForge, if you use this code, give credit where credit is due. Pslam 111:2 'Great are the works of the LORD; they are pondered by all who delight in them.'";
+        vertical-alignment: TextVerticalAlignment.center;
+        wrap: TextWrap.word-wrap;
+        font-size: 14px;
+    }
+    Rectangle {}
+}
