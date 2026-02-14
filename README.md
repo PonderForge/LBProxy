@@ -1,6 +1,10 @@
 [<img src="https://raw.githubusercontent.com/PonderForge/LBProxy/main/Logo.png" width="400">](https://raw.githubusercontent.com/PonderForge/LustBlock/main/Logo.png)\
 Ridculously High Speed NSFW MITM Internet Filter 
-![demo](https://raw.githubusercontent.com/PonderForge/LBProxy/main/demo.gif)\
+
+
+https://github.com/user-attachments/assets/9898d0b6-6543-479d-b940-270d4c123bc7
+
+
 # Install
 ## Linux
 1. Download from releases: lbproxy-linux.deb or lbproxy-linux.tar.xz
