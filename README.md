@@ -1,4 +1,4 @@
-[<img src="https://raw.githubusercontent.com/PonderForge/LBProxy/main/Logo.png" width="400">](https://raw.githubusercontent.com/PonderForge/LustBlock/main/Logo.png)\
+[<img src="https://raw.githubusercontent.com/PonderForge/LBProxy/main/images/Logo.png" width="400">](https://raw.githubusercontent.com/PonderForge/LustBlock/main/images/Logo.png)\
 Ridculously High Speed NSFW MITM Internet Filter 
 
 
